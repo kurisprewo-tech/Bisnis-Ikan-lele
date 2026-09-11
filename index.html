@@ -65,8 +65,10 @@ svg{width:100%;height:100%}.gridline{stroke:#eee;stroke-width:1}.axis{fill:#999;
       <small>Total keuntungan sementara</small>
       <h1 id="profit">Rp 0</h1>
       <div class="stats">
-        <div class="stat"><small>Penjualan</small><b class="green" id="sales">Rp 0</b></div>
+        <div class="stat"><small>Penjualan lele</small><b class="green" id="sales">Rp 0</b></div>
+        <div class="stat"><small>Pemasukan lain</small><b class="green" id="income">Rp 0</b></div>
         <div class="stat"><small>Total biaya</small><b class="red" id="expenses">Rp 0</b></div>
+        <div class="stat"><small>Saldo kas</small><b id="cashBalance">Rp 0</b></div>
       </div>
     </div>
 
@@ -74,6 +76,7 @@ svg{width:100%;height:100%}.gridline{stroke:#eee;stroke-width:1}.axis{fill:#999;
       <button class="active" onclick="showSection('kolam')"><span class="icon">🏊</span><b>Kolam</b><small>Data kolam & ikan</small></button>
       <button onclick="showSection('biaya')"><span class="icon">🌾</span><b>Biaya</b><small>Pakan & pengeluaran</small></button>
       <button onclick="showSection('penjualan')"><span class="icon">💰</span><b>Penjualan</b><small>Catatan hasil panen</small></button>
+      <button onclick="showSection('pemasukan')"><span class="icon">💵</span><b>Pemasukan</b><small>Uang masuk lainnya</small></button>
       <button onclick="showSection('laporan')"><span class="icon">📊</span><b>Laporan</b><small>Keuntungan usaha</small></button>
     </div>
 
@@ -137,6 +140,27 @@ svg{width:100%;height:100%}.gridline{stroke:#eee;stroke-width:1}.axis{fill:#999;
     <div id="saleList"></div>
   </section>
 
+
+  <section id="pemasukanPage" class="hidden">
+    <div class="section-title"><h3>💵 Pemasukan</h3></div>
+    <div class="card">
+      <div class="form-row"><label>Tanggal</label><input id="incomeDate" type="date"></div>
+      <div class="form-row"><label>Kategori</label>
+        <select id="incomeType">
+          <option>Modal Tambahan</option>
+          <option>Pinjaman</option>
+          <option>Pendapatan Lain</option>
+          <option>Pengembalian Uang</option>
+          <option>Lain-lain</option>
+        </select>
+      </div>
+      <div class="form-row"><label>Nominal</label><input id="incomeAmount" type="number" placeholder="500000"></div>
+      <div class="form-row"><label>Keterangan</label><input id="incomeNote" placeholder="Contoh: Tambahan modal"></div>
+      <button class="primary" onclick="addIncome()">+ Simpan Pemasukan</button>
+    </div>
+    <div id="incomeList"></div>
+  </section>
+
   <section id="laporanPage" class="hidden">
     <div class="section-title"><h3>📊 Laporan Usaha</h3></div>
     <div class="card">
@@ -165,29 +189,33 @@ svg{width:100%;height:100%}.gridline{stroke:#eee;stroke-width:1}.axis{fill:#999;
 <div id="toast" class="toast"></div>
 
 <script>
-const state = JSON.parse(localStorage.getItem('lelekuData') || '{"ponds":[],"costs":[],"sales":[]}');
+const state = JSON.parse(localStorage.getItem('lelekuData') || '{"ponds":[],"costs":[],"sales":[],"incomes":[]}');
+if(!state.incomes) state.incomes=[];
 
 function save(){localStorage.setItem('lelekuData',JSON.stringify(state));render();}
 function rupiah(n){return 'Rp '+Number(n||0).toLocaleString('id-ID');}
 function today(el){if(!el.value) el.value=new Date().toISOString().slice(0,10)}
-today(document.getElementById('stockDate')); today(document.getElementById('saleDate'));
+today(document.getElementById('stockDate')); today(document.getElementById('saleDate')); today(document.getElementById('incomeDate'));
 
 function totals(){
   const expense=state.costs.reduce((a,b)=>a+Number(b.amount),0);
   const sales=state.sales.reduce((a,b)=>a+Number(b.total),0);
-  return {expense,sales,profit:sales-expense};
+  const income=state.incomes.reduce((a,b)=>a+Number(b.amount),0);
+  return {expense,sales,income,profit:sales-expense,saldo:income+sales-expense};
 }
 function render(){
   const t=totals();
   document.getElementById('profit').textContent=rupiah(t.profit);
   document.getElementById('sales').textContent=rupiah(t.sales);
   document.getElementById('expenses').textContent=rupiah(t.expense);
+  document.getElementById('income').textContent=rupiah(t.income);
+  document.getElementById('cashBalance').textContent=rupiah(t.saldo);
   document.getElementById('reportExpense').textContent=rupiah(t.expense);
   document.getElementById('reportSales').textContent=rupiah(t.sales);
   document.getElementById('reportProfit').textContent=rupiah(t.profit);
   document.getElementById('reportPonds').textContent=state.ponds.length;
-  renderPonds(); renderCosts(); renderSales(); renderHistory(); renderRecent();
-  document.getElementById('summary').innerHTML=state.sales.length||state.costs.length
+  renderPonds(); renderCosts(); renderSales(); renderIncomes(); renderHistory(); renderRecent();
+  document.getElementById('summary').innerHTML=state.sales.length||state.costs.length||state.incomes.length
     ? `Dari data yang dicatat, keuntungan sementara usaha adalah <b>${rupiah(t.profit)}</b>.`
     : 'Belum ada data.';
 }
@@ -219,6 +247,24 @@ function addSale(){
   state.sales.unshift({id:Date.now(),date:saleDate.value,weight,price,total:weight*price,buyer:buyer.value||'-'});
   saleWeight.value='';salePrice.value='';buyer.value='';save();toast('Penjualan berhasil disimpan');
 }
+function addIncome(){
+  const amount=Number(incomeAmount.value);
+  if(!amount){toast('Masukkan nominal pemasukan');return}
+  state.incomes.unshift({
+    id:Date.now(),
+    date:incomeDate.value || new Date().toISOString().slice(0,10),
+    type:incomeType.value,
+    amount,
+    note:incomeNote.value||'-'
+  });
+  incomeAmount.value='';incomeNote.value='';save();toast('Pemasukan berhasil disimpan');
+}
+function renderIncomes(){
+  const el=document.getElementById('incomeList');
+  if(!state.incomes.length){el.innerHTML='<div class="card empty">Belum ada pemasukan.</div>';return}
+  el.innerHTML='<div class="card">'+state.incomes.slice(0,15).map(i=>`<div class="list-item"><div class="item-left"><div class="circle">💵</div><div><div class="item-title">${esc(i.type)}</div><div class="item-sub">${esc(i.note)} • ${i.date}</div></div></div><span class="amount green">+${rupiah(i.amount)}</span></div>`).join('')+'</div>';
+}
+
 function renderPonds(){
   const el=document.getElementById('pondList');
   if(!state.ponds.length){el.innerHTML='<div class="card empty">Belum ada kolam.</div>';return}
@@ -240,7 +286,8 @@ function renderSales(){
 function renderHistory(){
   const arr=[
     ...state.costs.map(c=>({date:c.date,title:c.type,note:c.note,amount:-c.amount,icon:'🌾'})),
-    ...state.sales.map(s=>({date:s.date,title:'Penjualan lele',note:s.weight+' kg • '+s.buyer,amount:s.total,icon:'💰'}))
+    ...state.sales.map(s=>({date:s.date,title:'Penjualan lele',note:s.weight+' kg • '+s.buyer,amount:s.total,icon:'💰'})),
+    ...state.incomes.map(i=>({date:i.date,title:i.type,note:i.note,amount:i.amount,icon:'💵'}))
   ].sort((a,b)=>b.date.localeCompare(a.date));
   const el=document.getElementById('historyList');
   el.innerHTML=arr.length?arr.map(x=>`<div class="list-item"><div class="item-left"><div class="circle">${x.icon}</div><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.note)} • ${x.date}</div></div></div><span class="amount ${x.amount>=0?'green':'red'}">${x.amount>=0?'+':'-'}${rupiah(Math.abs(x.amount))}</span></div>`).join(''):'<div class="empty">Belum ada riwayat.</div>';
@@ -249,7 +296,8 @@ function renderRecent(){
   const el=document.getElementById('recentList');
   const arr=[
     ...state.costs.map(c=>({date:c.date,title:c.type,note:c.note,amount:-c.amount,icon:'🌾'})),
-    ...state.sales.map(s=>({date:s.date,title:'Penjualan lele',note:s.weight+' kg',amount:s.total,icon:'💰'}))
+    ...state.sales.map(s=>({date:s.date,title:'Penjualan lele',note:s.weight+' kg',amount:s.total,icon:'💰'})),
+    ...state.incomes.map(i=>({date:i.date,title:i.type,note:i.note,amount:i.amount,icon:'💵'}))
   ].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,4);
   el.innerHTML=arr.length?arr.map(x=>`<div class="list-item"><div class="item-left"><div class="circle">${x.icon}</div><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.note)}</div></div></div><span class="amount ${x.amount>=0?'green':'red'}">${x.amount>=0?'+':'-'}${rupiah(Math.abs(x.amount))}</span></div>`).join(''):'<div class="empty">Belum ada aktivitas.</div>';
 }
